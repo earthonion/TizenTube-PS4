@@ -1,3 +1,6 @@
+  if (window.__MH_SPONSORBLOCK_LOADED) { return; }
+  window.__MH_SPONSORBLOCK_LOADED = true;
+
 import "whatwg-fetch";
 import 'core-js/proposals/object-getownpropertydescriptors';
 import '@formatjs/intl-getcanonicallocales/polyfill.iife'
