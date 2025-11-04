@@ -17,8 +17,8 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install esbuild
-        run: npm install esbuild
+      - name: Install deps
+        run: npm install whatwg-fetch core-js @formatjs/intl-getcanonicallocales @formatjs/intl-locale @formatjs/intl-displaynames esbuild
 
       - name: Bundle and Minify
         run: npx esbuild mods/userScript.js --bundle --minify --outfile=mods/inject.js
