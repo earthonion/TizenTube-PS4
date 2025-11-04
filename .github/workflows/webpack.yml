@@ -1,4 +1,4 @@
-name: Minify and Bundle UserScript.js
+name: Bundle and Release userScript.js as inject.js
 
 on:
   push:
@@ -17,24 +17,28 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install deps
-        run: npm install whatwg-fetch core-js @formatjs/intl-getcanonicallocales @formatjs/intl-locale @formatjs/intl-displaynames esbuild
+      - name: Install dependencies
+        run: |
+          npm install esbuild
+          npm install whatwg-fetch core-js @formatjs/intl-getcanonicallocales @formatjs/intl-locale @formatjs/intl-displaynames
 
-      - name: Bundle and Minify
-        run: npx esbuild mods/userScript.js --bundle --minify --outfile=mods/inject.js
+      - name: Bundle and minify userScript.js
+        run: |
+          npx esbuild mods/userScript.js --bundle --minify --outfile=inject.js
 
-      - name: Commit and push bundled userscript
+      - name: Commit bundled file to repo
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add mods/inject.js
+          git add inject.js
           git diff --cached --quiet || (
-            git commit -m "Auto-bundle and minify UserScript.js [CI]"
+            git commit -m "Auto-bundle and minify userScript.js to inject.js [CI]"
             git push
           )
 
-      - name: Upload to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Upload inject.js to the latest release
         uses: softprops/action-gh-release@v1
         with:
-          files: mods/inject.js
+          files: inject.js
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
