@@ -80,9 +80,7 @@ class SponsorBlockHandler {
       'music_offtopic'
     ];
     const resp = await fetch(
-      `${sponsorblockAPI}/${videoHash}?categories=${encodeURIComponent(
-        JSON.stringify(categories)
-      )}`
+      `${sponsorblockAPI}/${videoHash}`
     );
     const results = await resp.json();
 
