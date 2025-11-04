@@ -1,9 +1,10 @@
-# TizenTube
+# TizenTube-PS4
 
-A fork of tizentube for PS4.
+A fork of **TizenTube** modified for **PS4**.
 
-place inject.js into /data/youtube/inject.js
-
+- Works with [**yt_ad_skip for GoldHEN**](https://github.com/earthonion/yt_adskip_ps4) (Jailbroken consoles only)
+- Download the latest `inject.js` from the [Releases](../../releases) page
+- Place `inject.js` into:  `/data/youtube/inject.js`
 
 TizenTube is a TizenBrew module that enhances your favourite streaming websites viewing experience by removing ads and adding support for Sponsorblock.
 
