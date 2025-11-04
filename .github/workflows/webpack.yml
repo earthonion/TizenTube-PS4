@@ -2,19 +2,22 @@ name: Bundle and Release userScript.js as inject.js
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: '20'    # ← removed cache: 'npm'
+          node-version: '20'
 
-      - name: Install build deps
+      - name: Install dependencies
         run: |
           npm install esbuild
           npm install whatwg-fetch core-js @formatjs/intl-getcanonicallocales @formatjs/intl-locale @formatjs/intl-displaynames
@@ -41,6 +44,7 @@ jobs:
           )
 
       - name: Create new tag
+        id: tag
         run: |
           TAG_NAME="v$(date +'%Y%m%d-%H%M%S')"
           echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
@@ -51,7 +55,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ env.TAG_NAME }}
-          name: "Release $TAG_NAME"
+          name: "Release ${{ env.TAG_NAME }}"
           files: inject.js
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
