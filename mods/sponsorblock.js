@@ -46,7 +46,7 @@ const barTypes = {
   }
 };
 
-const sponsorblockAPI = 'https://sponsor.ajay.app/api';
+const sponsorblockAPI = 'http://127.0.0.1:4040';
 
 class SponsorBlockHandler {
   video = null;
@@ -80,7 +80,7 @@ class SponsorBlockHandler {
       'music_offtopic'
     ];
     const resp = await fetch(
-      `${sponsorblockAPI}/skipSegments/${videoHash}?categories=${encodeURIComponent(
+      `${sponsorblockAPI}/${videoHash}?categories=${encodeURIComponent(
         JSON.stringify(categories)
       )}`
     );
