@@ -36,9 +36,19 @@ jobs:
             git push
           )
 
-      - name: Upload inject.js to the latest release
+      - name: Create new tag
+        id: tag
+        run: |
+          TAG_NAME="v$(date +'%Y%m%d-%H%M%S')"
+          echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
+          git tag "$TAG_NAME"
+          git push origin "$TAG_NAME"
+
+      - name: Upload inject.js to new release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ env.TAG_NAME }}
+          name: "Release ${{ env.TAG_NAME }}"
           files: inject.js
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
