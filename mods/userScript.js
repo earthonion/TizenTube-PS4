@@ -1,4 +1,5 @@
-  if (window.__MH_SPONSORBLOCK_LOADED) { return; }
+(function(){
+if (window.__MH_SPONSORBLOCK_LOADED) { return; }
   window.__MH_SPONSORBLOCK_LOADED = true;
 
 import "whatwg-fetch";
@@ -18,3 +19,4 @@ import "./ui/settings.js";
 import "./ui/disableWhosWatching.js";
 import "./subtitleConfig.js";
 import "./updater.js";
+}
