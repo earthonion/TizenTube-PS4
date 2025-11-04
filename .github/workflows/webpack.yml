@@ -16,15 +16,23 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
 
       - name: Install dependencies
         run: |
           npm install esbuild
           npm install whatwg-fetch core-js @formatjs/intl-getcanonicallocales @formatjs/intl-locale @formatjs/intl-displaynames
 
-      - name: Bundle and minify userScript.js
+      - name: Bundle single-file guarded IIFE
         run: |
-          npx esbuild mods/userScript.js --bundle --minify --outfile=inject.js
+          npx esbuild mods/userScript.js \
+            --bundle \
+            --platform=browser \
+            --format=iife \
+            --minify \
+            --outfile=inject.js \
+            --banner:js="(function(){if(window.__MH_SPONSORBLOCK_LOADED)return;window.__MH_SPONSORBLOCK_LOADED=true;" \
+            --footer:js="})();"
 
       - name: Commit bundled file to repo
         run: |
@@ -32,7 +40,7 @@ jobs:
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git add inject.js
           git diff --cached --quiet || (
-            git commit -m "Auto-bundle and minify userScript.js to inject.js [CI]"
+            git commit -m "Auto-bundle guarded single-file inject.js [CI]"
             git push
           )
 
