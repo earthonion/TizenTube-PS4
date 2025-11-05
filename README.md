@@ -1,4 +1,4 @@
-# TizenTube-PS4
+# TizenTube-PS4 WIP
 
 A fork of [**TizenTube**](https://github.com/reisxd/TizenTube/) modified for **PS4**.
 
