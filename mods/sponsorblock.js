@@ -1,53 +1,78 @@
-import sha256 from './tiny-sha256.js';
+// --- Imports ----------------------------------------------------
+import { sha256 } from './tiny-sha256.js';
 import { configRead } from './config.js';
 import { showToast } from './ui/ytUI.js';
 
-// Copied from https://github.com/ajayyy/SponsorBlock/blob/da1a535de784540ee10166a75a3eb8537073838c/src/config.ts#L113-L134
+// --- SponsorBlock Local Loader ----------------------------------
+/**
+ * Scan localhost ports [startPort..endPort] for SponsorBlock proxy and fetch segments for a video.
+ * Returns a Promise that resolves to an array of segments (possibly empty).
+ */
+function loadSponsorBlock(videoId, startPort = 4040, endPort = 4050, timeoutMs = 2000) {
+  if (!videoId) return Promise.resolve([]);
+
+  return new Promise((resolve) => {
+    let port = startPort;
+
+    function tryNext() {
+      if (port > endPort) {
+        // Exhausted all ports
+        resolve([]);
+        return;
+      }
+
+      try {
+        const xhr = new XMLHttpRequest();
+        const url = `http://127.0.0.1:${port}/${encodeURIComponent(videoId)}`;
+        xhr.timeout = timeoutMs;
+
+        xhr.onload = function () {
+          if (xhr.status === 200) {
+            try {
+              const data = JSON.parse(xhr.responseText);
+              if (Array.isArray(data) && data.length > 0) {
+                showToast('SponsorBlock', `${data.length} segment(s) found`);
+                resolve(data);
+                return;
+              }
+            } catch (e) {
+              // fallback to next port
+            }
+          }
+          port++;
+          tryNext();
+        };
+
+        xhr.onerror = xhr.ontimeout = function () {
+          port++;
+          tryNext();
+        };
+
+        xhr.open('GET', url, true);
+        xhr.send();
+      } catch (e) {
+        port++;
+        tryNext();
+      }
+    }
+
+    tryNext();
+  });
+}
+
+// --- Segment Bar Types ------------------------------------------
 const barTypes = {
-  sponsor: {
-    color: '#00d400',
-    opacity: '0.7',
-    name: 'sponsored segment'
-  },
-  intro: {
-    color: '#00ffff',
-    opacity: '0.7',
-    name: 'intro'
-  },
-  outro: {
-    color: '#0202ed',
-    opacity: '0.7',
-    name: 'outro'
-  },
-  interaction: {
-    color: '#cc00ff',
-    opacity: '0.7',
-    name: 'interaction reminder'
-  },
-  selfpromo: {
-    color: '#ffff00',
-    opacity: '0.7',
-    name: 'self-promotion'
-  },
-  preview: {
-    color: '#008fd6',
-    opacity: '0.7',
-    name: 'recap or preview'
-  },
-  filler: {
-    color: "#7300FF",
-    opacity: "0.9",
-    name: 'tangents'
-  },
-  music_offtopic: {
-    color: '#ff9900',
-    opacity: '0.7',
-    name: 'non-music part'
-  }
+  sponsor:        { color: '#00d400', opacity: '0.7', name: 'sponsored segment' },
+  intro:          { color: '#00ffff', opacity: '0.7', name: 'intro' },
+  outro:          { color: '#0202ed', opacity: '0.7', name: 'outro' },
+  interaction:    { color: '#cc00ff', opacity: '0.7', name: 'interaction reminder' },
+  selfpromo:      { color: '#ffff00', opacity: '0.7', name: 'self-promotion' },
+  preview:        { color: '#008fd6', opacity: '0.7', name: 'recap or preview' },
+  filler:         { color: '#7300FF', opacity: '0.9', name: 'tangents' },
+  music_offtopic: { color: '#ff9900', opacity: '0.7', name: 'non-music part' }
 };
 
-const sponsorblockAPI = 'http://127.0.0.1:4040';
-
+// --- SponsorBlockHandler ----------------------------------------
 class SponsorBlockHandler {
   video = null;
   active = true;
@@ -68,13 +93,200 @@ class SponsorBlockHandler {
   }
 
   async init() {
-    const videoHash = sha256(this.videoID).substring(0, 4);
-    const categories = [
-      'sponsor',
-      'intro',
-      'outro',
-      'interaction',
-      'selfpromo',
+    // Fetch segments from local proxy
+    const results = await loadSponsorBlock(this.videoID);
+    console.info(this.videoID, 'Got segments:', results);
+
+    if (!results || !results.length) {
+      console.info(this.videoID, 'No segments found.');
+      return;
+    }
+
+    this.segments = results;
+    this.manualSkippableCategories = configRead('sponsorBlockManualSkips') || [];
+    this.skippableCategories = this.getSkippableCategories();
+
+    this.scheduleSkipHandler = () => this.scheduleSkip();
+    this.durationChangeHandler = () => this.buildOverlay();
+
+    this.attachVideo();
+    this.buildOverlay();
+  }
+
+  getSkippableCategories() {
+    const skippableCategories = [];
+    if (configRead('enableSponsorBlockSponsor')) skippableCategories.push('sponsor');
+    if (configRead('enableSponsorBlockIntro')) skippableCategories.push('intro');
+    if (configRead('enableSponsorBlockOutro')) skippableCategories.push('outro');
+    if (configRead('enableSponsorBlockInteraction')) skippableCategories.push('interaction');
+    if (configRead('enableSponsorBlockSelfPromo')) skippableCategories.push('selfpromo');
+    if (configRead('enableSponsorBlockPreview')) skippableCategories.push('preview');
+    if (configRead('enableSponsorBlockFiller')) skippableCategories.push('filler');
+    if (configRead('enableSponsorBlockMusicOfftopic')) skippableCategories.push('music_offtopic');
+    return skippableCategories;
+  }
+
+  attachVideo() {
+    clearTimeout(this.attachVideoTimeout);
+    this.attachVideoTimeout = null;
+
+    this.video = document.querySelector('video');
+    if (!this.video) {
+      console.info(this.videoID, 'No video yet...');
+      this.attachVideoTimeout = setTimeout(() => this.attachVideo(), 100);
+      return;
+    }
+
+    console.info(this.videoID, 'Video found, binding...');
+    this.video.addEventListener('play', this.scheduleSkipHandler);
+    this.video.addEventListener('pause', this.scheduleSkipHandler);
+    this.video.addEventListener('timeupdate', this.scheduleSkipHandler);
+    this.video.addEventListener('durationchange', this.durationChangeHandler);
+  }
+
+  buildOverlay() {
+    if (this.segmentsoverlay) return;
+    if (!this.video || !this.video.duration) return;
+
+    const videoDuration = this.video.duration;
+
+    this.segmentsoverlay = document.createElement('div');
+    this.segmentsoverlay.classList.add('ytLrProgressBarHost', 'ytLrProgressBarFocused', 'ytLrWatchDefaultProgressBar');
+
+    const sliderElement = document.createElement('div');
+    sliderElement.style.setProperty('background-color', 'rgb(0, 0, 0, 0)');
+    sliderElement.style.setProperty('bottom', 'auto', 'important');
+    sliderElement.style.setProperty('height', '0.25rem', 'important');
+    sliderElement.style.setProperty('overflow', 'hidden', 'important');
+    sliderElement.style.setProperty('position', 'absolute', 'important');
+    sliderElement.style.setProperty('top', '1.625rem', 'important');
+    sliderElement.style.setProperty('width', '100%', 'important');
+    this.segmentsoverlay.appendChild(sliderElement);
+
+    this.segments.forEach((segment) => {
+      const [start, end] = segment.segment;
+      const barType = barTypes[segment.category] || { color: 'blue', opacity: 0.7 };
+      const transform = `translateX(${(start / videoDuration) * 100.0}%) scaleX(${(end - start) / videoDuration})`;
+
+      const elm = document.createElement('div');
+      elm.style.setProperty('background', barType.color, 'important');
+      elm.style.setProperty('opacity', barType.opacity, 'important');
+      elm.style.setProperty('transform', transform, 'important');
+      elm.style.setProperty('height', '100%');
+      elm.style.setProperty('pointer-events', 'none');
+      elm.style.setProperty('position', 'absolute');
+      elm.style.setProperty('transform-origin', 'left');
+      elm.style.setProperty('width', '100%');
+
+      sliderElement.appendChild(elm);
+    });
+
+    this.observer = new MutationObserver((mutations) => {
+      mutations.forEach((m) => {
+        if (m.removedNodes) {
+          for (const node of m.removedNodes) {
+            if (node === this.segmentsoverlay) {
+              console.info('bringing back segments overlay');
+              this.slider.appendChild(this.segmentsoverlay);
+            }
+          }
+        }
+
+        const bar = document.querySelector('ytlr-progress-bar');
+        if (bar && bar.getAttribute('hybridnavfocusable') === 'false') {
+          this.segmentsoverlay.classList.remove('ytLrProgressBarFocused');
+        } else {
+          this.segmentsoverlay.classList.add('ytLrProgressBarFocused');
+        }
+      });
+    });
+
+    this.sliderInterval = setInterval(() => {
+      this.slider = document.querySelector('ytlr-redux-connect-ytlr-progress-bar');
+      if (this.slider) {
+        clearInterval(this.sliderInterval);
+        this.sliderInterval = null;
+        this.observer.observe(this.slider, { childList: true, subtree: true });
+        this.slider.appendChild(this.segmentsoverlay);
+      }
+    }, 500);
+  }
+
+  scheduleSkip() {
+    clearTimeout(this.nextSkipTimeout);
+    this.nextSkipTimeout = null;
+
+    if (!this.active || !this.video || this.video.paused) return;
+
+    const nextSegments = this.segments
+      .filter(
+        (seg) =>
+          seg.segment[0] > this.video.currentTime - 0.3 &&
+          seg.segment[1] > this.video.currentTime - 0.3
+      )
+      .sort((s1, s2) => s1.segment[0] - s2.segment[0]);
+
+    if (!nextSegments.length) return;
+
+    const [segment] = nextSegments;
+    const [start, end] = segment.segment;
+
+    this.nextSkipTimeout = setTimeout(() => {
+      if (this.video.paused || !this.skippableCategories.includes(segment.category)) return;
+
+      const skipName = barTypes[segment.category]?.name || segment.category;
+      if (!this.manualSkippableCategories.includes(segment.category)) {
+        showToast('SponsorBlock', `Skipping ${skipName}`);
+        this.video.currentTime = end + 0.1;
+        this.scheduleSkip();
+      }
+    }, Math.max(0, (start - this.video.currentTime) * 1000));
+  }
+
+  destroy() {
+    console.info(this.videoID, 'Destroying');
+    this.active = false;
+    clearTimeout(this.nextSkipTimeout);
+    clearTimeout(this.attachVideoTimeout);
+    clearInterval(this.sliderInterval);
+    if (this.observer) this.observer.disconnect();
+    if (this.segmentsoverlay) this.segmentsoverlay.remove();
+
+    if (this.video) {
+      this.video.removeEventListener('play', this.scheduleSkipHandler);
+      this.video.removeEventListener('pause', this.scheduleSkipHandler);
+      this.video.removeEventListener('timeupdate', this.scheduleSkipHandler);
+      this.video.removeEventListener('durationchange', this.durationChangeHandler);
+    }
+  }
+}
+
+// --- Global Event Hook ------------------------------------------
+window.sponsorblock = null;
+
+window.addEventListener('hashchange', () => {
+  const newURL = new URL(location.hash.substring(1), location.href);
+  const videoID = newURL.search.replace('?v=', '').split('&')[0];
+  const needsReload = videoID && (!window.sponsorblock || window.sponsorblock.videoID !== videoID);
+
+  if (needsReload) {
+    if (window.sponsorblock) {
+      try {
+        window.sponsorblock.destroy();
+      } catch (err) {
+        console.warn('window.sponsorblock.destroy() failed!', err);
+      }
+      window.sponsorblock = null;
+    }
+
+    if (configRead('enableSponsorBlock')) {
+      window.sponsorblock = new SponsorBlockHandler(videoID);
+      window.sponsorblock.init();
+    } else {
+      console.info('SponsorBlock disabled, not loading');
+    }
+  }
+}, false);      'selfpromo',
       'preview',
       'filler',
       'music_offtopic'
